@@ -16,7 +16,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.smithdtyler.prettygoodmusicplayer;
+package com.smithdtyler.prettygoodmusicplayer.playback;
 
 import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
@@ -31,7 +31,7 @@ public class MusicBroadcastReceiver extends BroadcastReceiver {
 	
 	@Override
 	public void onReceive(Context context, Intent intent) {
-		Log.i(TAG, "got a thingy!");
+		Log.i(TAG, "Got an intent");
 
 		if (BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED
 				.equals(intent.getAction())
@@ -47,6 +47,11 @@ public class MusicBroadcastReceiver extends BroadcastReceiver {
 
 			KeyEvent keyEvent = (KeyEvent) intent.getExtras().get(
 					Intent.EXTRA_KEY_EVENT);
+
+			if(keyEvent == null) {
+				return;
+			}
+
 			Log.i(TAG, "Got a key event");
 			if (keyEvent.getAction() == KeyEvent.ACTION_UP) {
 				Log.i(TAG, "Got a key up event");
@@ -119,9 +124,7 @@ public class MusicBroadcastReceiver extends BroadcastReceiver {
 					// code for stop
 					break;
 				}
-
 			}
 		}
-
 	}
 }

@@ -16,14 +16,13 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.smithdtyler.prettygoodmusicplayer;
+package com.smithdtyler.prettygoodmusicplayer.playback;
 
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.bluetooth.BluetoothDevice;
-import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -47,6 +46,13 @@ import android.preference.PreferenceManager;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationCompat.Builder;
 import android.util.Log;
+
+import com.smithdtyler.prettygoodmusicplayer.AlbumList;
+import com.smithdtyler.prettygoodmusicplayer.ArtistList;
+import com.smithdtyler.prettygoodmusicplayer.NowPlaying;
+import com.smithdtyler.prettygoodmusicplayer.R;
+import com.smithdtyler.prettygoodmusicplayer.SongList;
+import com.smithdtyler.prettygoodmusicplayer.Utils;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -89,7 +95,6 @@ public class MusicPlaybackService extends Service {
 	static final String PRETTY_SONG_NAME = "PRETTY_SONG_NAME";
 	static final String PRETTY_ARTIST_NAME = "PRETTY_ARTIST_NAME";
 	static final String PRETTY_ALBUM_NAME = "PRETTY_ALBUM_NAME";
-	static final String ALBUM_NAME = "ALBUM_NAME";
 	static final String PLAYBACK_STATE = "PLAYBACK_STATE";
 	static final String TRACK_DURATION = "TRACK_DURATION";
 	static final String TRACK_POSITION = "TRACK_POSITION";
@@ -107,20 +112,18 @@ public class MusicPlaybackService extends Service {
 	private Timer timer;
 
 	private AudioManager am;
-	private Looper mServiceLooper;
 	private ServiceHandler mServiceHandler;
 	private MediaPlayer mp;
 	private static final String TAG = "MusicPlaybackService";
 	private static boolean isRunning = false;
 
-	private static int uniqueid = new String("Music Playback Service")
-	.hashCode();
+	private static int uid = "Music Playback Service".hashCode();
 
 	private OnAudioFocusChangeListener audioFocusListener = new PrettyGoodAudioFocusChangeListener();
 
 	private static IntentFilter filter = new IntentFilter();
 	static {
-		filter.addAction("android.intent.action.HEADSET_PLUG");
+		filter.addAction(Intent.ACTION_HEADSET_PLUG);
 		filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED);
 		filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
 	}
@@ -129,11 +132,11 @@ public class MusicPlaybackService extends Service {
 	/**
 	 * Keeps track of all current registered clients.
 	 */
-	List<Messenger> mClients = new ArrayList<Messenger>();
+	List<Messenger> mClients = new ArrayList<>();
 
 	final Messenger mMessenger = new Messenger(new IncomingHandler(this));
 
-	public AudioManager mAudioManager;
+	private AudioManager mAudioManager;
 
 	// These are used to report song progress when the song isn't started yet.
 	private int lastDuration = 0;
@@ -172,7 +175,7 @@ public class MusicPlaybackService extends Service {
 		isRunning = true;
 		sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
 
-		powerManager =(PowerManager) getSystemService(POWER_SERVICE);
+		powerManager = (PowerManager) getSystemService(POWER_SERVICE);
 		wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
 				"PGMPWakeLock");
 
@@ -202,8 +205,7 @@ public class MusicPlaybackService extends Service {
 		thread.start();
 
 		// Get the HandlerThread's Looper and use it for our Handler
-		mServiceLooper = thread.getLooper();
-		mServiceHandler = new ServiceHandler(mServiceLooper);
+		mServiceHandler = new ServiceHandler(thread.getLooper());
 
 		// https://stackoverflow.com/questions/19474116/the-constructor-notification-is-deprecated
 		// https://stackoverflow.com/questions/6406730/updating-an-ongoing-notification-quietly/15538209#15538209
@@ -236,7 +238,7 @@ public class MusicPlaybackService extends Service {
 						getResources().getString(R.string.notification_title))
 						.build();
 
-		startForeground(uniqueid, notification);
+		startForeground(uid, notification);
 
 		timer = new Timer();
 		timer.scheduleAtFixedRate(new TimerTask() {
@@ -828,7 +830,7 @@ public class MusicPlaybackService extends Service {
 		}
 
 		NotificationManager mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-		mNotificationManager.notify(uniqueid, notification);
+		mNotificationManager.notify(uid, notification);
 	}
 
 	private class PrettyGoodAudioFocusChangeListener implements
@@ -894,92 +896,4 @@ public class MusicPlaybackService extends Service {
 			}
 		}
 	}
-
-	private static class HeadphoneBroadcastReceiver extends BroadcastReceiver{
-
-		/**
-		 * If the option to automatically resume on headphone re-connect is selected, 
-		 * keep track of the time they were unplugged.
-		 */
-		private long resumeOnQuickReconnectDisconnectTime = 0;
-
-		/**
-		 * There seems to be a race condition that causes headphone events to get fired while the service is shutting down
-		 * use this flag to indicate that events should be ignored.
-		 */ 
-		private boolean active = true;
-
-		@Override
-		public void onReceive(Context context, Intent intent) {
-			if(!active){
-				return;
-			}
-			SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(context);
-			if (Intent.ACTION_HEADSET_PLUG.equals(intent.getAction())) {
-				Log.i(TAG, "Got headset plug action");
-				String disconnectBehavior = sharedPref.getString("pref_disconnect_behavior", context.getString(R.string.pause_after_one_sec));
-				/*
-				 * state - 0 for unplugged, 1 for plugged. name - Headset type,
-				 * human readable string microphone - 1 if headset has a microphone,
-				 * 0 otherwise
-				 */
-				if(disconnectBehavior.equals(context.getString(R.string.resume_on_quick_reconnect))){
-					if (intent.getIntExtra("state", -1) == 0) {
-						Log.i(TAG, "headphones disconnected, pausing");
-						Intent msgIntent = new Intent(context, MusicPlaybackService.class);
-						msgIntent.putExtra("Message", MusicPlaybackService.MSG_PAUSE);
-						context.startService(msgIntent);
-						resumeOnQuickReconnectDisconnectTime = System.currentTimeMillis();
-					} else if (intent.getIntExtra("state", -1) == 1) {
-						long currentTime = System.currentTimeMillis();
-						if(currentTime - resumeOnQuickReconnectDisconnectTime < 1000){
-							// Resume
-							Log.i(TAG, "headphones plugged back in within 1000ms, resuming");
-							Intent msgIntent = new Intent(context, MusicPlaybackService.class);
-							msgIntent.putExtra("Message", MusicPlaybackService.MSG_PLAY);
-							context.startService(msgIntent);
-						}
-					}
-				} else if(disconnectBehavior.equals(context.getString(R.string.resume_on_reconnect))){
-					if (intent.getIntExtra("state", -1) == 0) {
-						Log.i(TAG, "headphones disconnected, pausing");
-						Intent msgIntent = new Intent(context, MusicPlaybackService.class);
-						msgIntent.putExtra("Message", MusicPlaybackService.MSG_PAUSE);
-						context.startService(msgIntent);
-						resumeOnQuickReconnectDisconnectTime = System.currentTimeMillis();
-					} else if (intent.getIntExtra("state", -1) == 1) {
-						// check to make sure we were playing at one point.
-						if(resumeOnQuickReconnectDisconnectTime > 0){
-							// Resume
-							Log.i(TAG, "headphones plugged back in, resuming");
-							Intent msgIntent = new Intent(context, MusicPlaybackService.class);
-							msgIntent.putExtra("Message", MusicPlaybackService.MSG_PLAY);
-							context.startService(msgIntent);
-						}
-					}
-				} else if(disconnectBehavior.equals(context.getString(R.string.pause_after_one_sec))){
-					if (intent.getIntExtra("state", -1) == 0) {
-						Log.i(TAG, "headphones disconnected, pausing in 1 seconds");
-						Intent msgIntent = new Intent(context, MusicPlaybackService.class);
-						msgIntent.putExtra("Message", MusicPlaybackService.MSG_PAUSE_IN_ONE_SEC);
-						context.startService(msgIntent);
-						// If the headphone is plugged back in quickly after being
-						// unplugged, keep playing
-					} else if (intent.getIntExtra("state", -1) == 1) {
-						Log.i(TAG, "headphones plugged back in, cancelling disconnect");
-						Intent msgIntent = new Intent(context, MusicPlaybackService.class);
-						msgIntent.putExtra("Message", MusicPlaybackService.MSG_CANCEL_PAUSE_IN_ONE_SEC);
-						context.startService(msgIntent);
-					}
-				} else {
-					// Pause immediately
-					Log.i(TAG, "headphones disconnected, pausing");
-					Intent msgIntent = new Intent(context, MusicPlaybackService.class);
-					msgIntent.putExtra("Message", MusicPlaybackService.MSG_PAUSE);
-					context.startService(msgIntent);
-				}
-			} 
-		}
-	}
-
 }

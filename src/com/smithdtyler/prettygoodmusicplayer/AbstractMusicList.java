@@ -29,6 +29,8 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.Toast;
 
+import com.smithdtyler.prettygoodmusicplayer.playback.MusicPlaybackService;
+
 /**
  * This class handles operations which are common to all lists of music at
  * various levels of granularity.

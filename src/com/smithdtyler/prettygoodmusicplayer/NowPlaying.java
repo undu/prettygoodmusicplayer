@@ -52,7 +52,8 @@ import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
 
-import com.smithdtyler.prettygoodmusicplayer.MusicPlaybackService.PlaybackState;
+import com.smithdtyler.prettygoodmusicplayer.playback.MusicPlaybackService;
+import com.smithdtyler.prettygoodmusicplayer.playback.MusicPlaybackService.PlaybackState;
 
 public class NowPlaying extends Activity {
 

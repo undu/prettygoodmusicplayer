@@ -195,7 +195,7 @@ public class Utils {
 	 * @param songFile
 	 * @return
 	 */
-	static String getPrettySongName(File songFile) {
+	public static String getPrettySongName(File songFile) {
 		return getPrettySongName(songFile.getName());
 	}
 
@@ -218,7 +218,7 @@ public class Utils {
 	 * @param musicRoot
 	 * @return
 	 */
-	static String getArtistName(File songFile, String musicRoot) {
+	public static String getArtistName(File songFile, String musicRoot) {
 		File albumDir = songFile.getParentFile().getParentFile();
 		if (albumDir.getAbsolutePath().equals(musicRoot)) {
 			return songFile.getParentFile().getName();
@@ -255,7 +255,7 @@ public class Utils {
 	 * Get the best guess as to where music is stored on the device.
 	 * @return
 	 */
-	static File getBestGuessMusicDirectory() {
+	public static File getBestGuessMusicDirectory() {
 		File ext = Environment.getExternalStorageDirectory();
 		if(ext != null && (ext.listFiles() != null)){
 			for (File f : ext.listFiles()) {
