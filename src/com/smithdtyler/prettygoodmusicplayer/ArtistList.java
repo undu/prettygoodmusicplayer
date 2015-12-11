@@ -48,7 +48,6 @@ import java.util.Map;
 @SuppressLint("DefaultLocale") public class ArtistList extends AbstractMusicList {
 	private static final String TAG = "Artist List";
 	public static final String ARTIST_NAME = "ARTIST_NAME";
-	public static final String ARTISTS_DIR = "ARTIST_DIRECTORY";
 	public static final String ARTIST_ABS_PATH_NAME = "ARTIST_PATH";
 	
 	private static final String PICK_DIR_TEXT = "Click to configure...";
@@ -60,14 +59,14 @@ import java.util.Map;
 	private String currentSize;
 
 	private void populateArtists(String baseDir){
-		artists = new ArrayList<Map<String,String>>();
+		artists = new ArrayList<>();
 		File f = new File(baseDir);
 		if(!f.exists() || !f.isDirectory()){
 			Log.e(TAG, "Storage directory " + f + " does not exist!");
 			return;
 		}
 		
-		List<String> artistDirs = new ArrayList<String>();
+		List<String> artistDirs = new ArrayList<>();
 		for(File dir : f.listFiles()){
 			if(Utils.isValidArtistDirectory(dir)){
 				artistDirs.add(dir.getName());
@@ -96,13 +95,13 @@ import java.util.Map;
 		for(String artist : artistDirs){
 			Log.v(TAG, "Adding artist " + artist);
 			// listview requires a map
-			Map<String,String> map = new HashMap<String, String>();
+			Map<String,String> map = new HashMap<>();
 			map.put("artist", artist);			
 			artists.add(map);
 		}
 		
 		if(!f.exists() || artistDirs.isEmpty()){
-			Map<String, String> map = new HashMap<String, String>();
+			Map<String, String> map = new HashMap<>();
 			map.put("artist", PICK_DIR_TEXT);
 			artists.add(map);
 		}
@@ -112,7 +111,7 @@ import java.util.Map;
 	protected void onResume() {
 		super.onResume();
         SharedPreferences prefs = getSharedPreferences("PrettyGoodMusicPlayer", MODE_PRIVATE);
-        prefs.edit();
+        prefs.edit().apply();
         File bestGuessMusicDir = Utils.getBestGuessMusicDirectory();
         String prefDir = prefs.getString("ARTIST_DIRECTORY", bestGuessMusicDir.getAbsolutePath());
         ListView lv = (ListView) findViewById(R.id.artistListView);
@@ -160,7 +159,7 @@ import java.util.Map;
 		int index = lv.getFirstVisiblePosition();
 		View v = lv.getChildAt(0);
 		int top = (v == null) ? 0 : v.getTop();
-		prefs.edit().putInt("ARTIST_LIST_TOP", top).putInt("ARTIST_LIST_INDEX",index).commit();
+		prefs.edit().putInt("ARTIST_LIST_TOP", top).putInt("ARTIST_LIST_INDEX",index).apply();
 		Log.i(TAG, "Saving position top " + top + " index " + index);
 	}
 
@@ -168,7 +167,7 @@ import java.util.Map;
 	protected void onStart() {
 		super.onStart();
         SharedPreferences prefs = getSharedPreferences("PrettyGoodMusicPlayer", MODE_PRIVATE);
-        Log.i(TAG, "Preferences " + prefs + " " + ((Object)prefs));
+        Log.i(TAG, "Preferences " + prefs + " " + ((Object) prefs));
         baseDir = prefs.getString("ARTIST_DIRECTORY", new File(Environment.getExternalStorageDirectory(), "Music").getAbsolutePath());
         Log.d(TAG, "Got configured base directory of " + baseDir);
 
@@ -243,7 +242,6 @@ import java.util.Map;
              }
         });
     }
-
 
 	// If the back key is pressed, ask if they really want to quit
     // if they do, pass the key press along. If they don't,

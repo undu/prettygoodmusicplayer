@@ -46,7 +46,6 @@ public class SongList extends AbstractMusicList {
 	public static final String SONG_ABS_FILE_NAME_LIST_POSITION = "SONG_LIST_POSITION";
 	private static final String TAG = "SongList";
 	private List<Map<String,String>> songs;
-	private SimpleAdapter simpleAdpt;
 	private List<String> songAbsFileNameList;
 	private String currentTheme;
 	private String currentSize;
@@ -58,9 +57,9 @@ public class SongList extends AbstractMusicList {
 	private File albumDir;
 	private boolean audiobookMode;
 
-	private void populateSongs(String artistName, String albumDirName, String artistAbsDirName){
+	private void populateSongs(String albumDirName, String artistAbsDirName){
 		
-		songs = new ArrayList<Map<String,String>>();
+		songs = new ArrayList<>();
 		
 		File artistDir = new File(artistAbsDirName);
 		if(albumDirName != null){
@@ -77,7 +76,7 @@ public class SongList extends AbstractMusicList {
 			Log.i(TAG, "Didn't find a resumable time");
 		}
 
-		List<File> songFiles = new ArrayList<File>();
+		List<File> songFiles = new ArrayList<>();
 		if(albumDir.exists() && albumDir.isDirectory() && (albumDir.listFiles() != null)){
 			Log.d(TAG, "external storage directory = " + albumDir);
 			
@@ -96,10 +95,8 @@ public class SongList extends AbstractMusicList {
 			// Assume we don't need full recursion
 			Log.d(TAG, "Adding all songs...");
 			File[] albumArray = artistDir.listFiles();
-			List<File> albums = new ArrayList<File>();
-			for(File alb : albumArray){
-				albums.add(alb);
-			}
+			List<File> albums = new ArrayList<>();
+			Collections.addAll(albums, albumArray);
 			
 			Collections.sort(albums, Utils.albumFileComparator);
 			
@@ -108,7 +105,7 @@ public class SongList extends AbstractMusicList {
 					// get the songs in the album, sort them, then
 					// add them to the list
 					File[] songFilesInAlbum = albumFile.listFiles();
-					List<File> songFilesInAlbumList = new ArrayList<File>();
+					List<File> songFilesInAlbumList = new ArrayList<>();
 					for(File songFile : songFilesInAlbum){
 						if(Utils.isValidSongFile(songFile)){
 							songFilesInAlbumList.add(songFile);
@@ -121,7 +118,7 @@ public class SongList extends AbstractMusicList {
 
 			// In addition to the albums, check directly under the artist directory
 			File[] songFilesInArtist = artistDir.listFiles();
-			List<File> songFilesInArtistList = new ArrayList<File>();
+			List<File> songFilesInArtistList = new ArrayList<>();
 			for(File songFile : songFilesInArtist){
 				if(Utils.isValidSongFile(songFile)){
 					songFilesInArtistList.add(songFile);
@@ -133,7 +130,7 @@ public class SongList extends AbstractMusicList {
 		
 		for(File song : songFiles){
 			Log.v(TAG, "Adding song " + song);
-			Map<String,String> map = new HashMap<String, String>();
+			Map<String,String> map = new HashMap<>();
 			map.put("song", Utils.getPrettySongName(song));			
 			songs.add(map);
 		}
@@ -153,7 +150,7 @@ public class SongList extends AbstractMusicList {
 					int minutes = prog / (1000 * 60);
 					int seconds = (prog % (1000 * 60)) / 1000;
 					String time = String.format(Locale.getDefault(), "%d:%02d", minutes, seconds);
-					Map<String, String> map = new HashMap<String, String>();
+					Map<String, String> map = new HashMap<>();
 					map.put("song", getResources().getString(R.string.resume) + ": " + resumeSongName + " (" + time + ")");
 					songs.add(0, map);
 					// loop over the available songs, make sure we still have it
@@ -176,7 +173,7 @@ public class SongList extends AbstractMusicList {
 			}
 		}
 		
-		songAbsFileNameList = new ArrayList<String>();
+		songAbsFileNameList = new ArrayList<>();
 		for(File song : songFiles){
 			songAbsFileNameList.add(song.getAbsolutePath());
 		}
@@ -193,9 +190,11 @@ public class SongList extends AbstractMusicList {
 	    artistDir = intent.getStringExtra(ArtistList.ARTIST_ABS_PATH_NAME);
 	    
 		ActionBar actionBar = getActionBar();
-		actionBar.setDisplayHomeAsUpEnabled(true);
-		actionBar.setTitle(artistName + ": " + album);
-		
+		if(actionBar != null) {
+			actionBar.setDisplayHomeAsUpEnabled(true);
+			actionBar.setTitle(artistName + ": " + album);
+		}
+
 		SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
         String theme = sharedPref.getString("pref_theme", getString(R.string.light));
         String size = sharedPref.getString("pref_text_size", getString(R.string.medium));
@@ -229,11 +228,10 @@ public class SongList extends AbstractMusicList {
 		
 	    Log.i(TAG, "Getting songs for " + album);
 	    
-	    populateSongs(artistName, album, artistDir);
-	    
-        simpleAdpt = new SimpleAdapter(this, songs, R.layout.pgmp_list_item, new String[] {"song"}, new int[] {R.id.PGMPListItemText});
+	    populateSongs(album, artistDir);
+
         ListView lv = (ListView) findViewById(R.id.songListView);
-        lv.setAdapter(simpleAdpt);
+        lv.setAdapter(new SimpleAdapter(this, songs, R.layout.pgmp_list_item, new String[] {"song"}, new int[] {R.id.PGMPListItemText}));
         
         // React to user clicks on item
         lv.setOnItemClickListener(new AdapterView.OnItemClickListener() {

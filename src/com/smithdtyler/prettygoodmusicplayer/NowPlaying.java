@@ -18,6 +18,7 @@
 
 package com.smithdtyler.prettygoodmusicplayer;
 
+import java.util.Arrays;
 import java.util.Locale;
 
 import android.annotation.SuppressLint;
@@ -151,7 +152,9 @@ public class NowPlaying extends Activity {
 					WindowManager.LayoutParams.FLAG_FULLSCREEN);
 		} else {
 			ActionBar actionBar = getActionBar();
-			actionBar.setDisplayHomeAsUpEnabled(true);
+			if(actionBar != null) {
+				actionBar.setDisplayHomeAsUpEnabled(true);
+			}
 		}
 		setContentView(R.layout.activity_now_playing);
 
@@ -173,7 +176,7 @@ public class NowPlaying extends Activity {
 			desiredAbsSongFileNamesPosition = intent.getIntExtra(SongList.SONG_ABS_FILE_NAME_LIST_POSITION, 0);
 			desiredSongProgress = intent.getIntExtra(MusicPlaybackService.TRACK_POSITION, 0);
 
-			Log.d(TAG, "Got song names " + desiredSongAbsFileNames + " position "
+			Log.d(TAG, "Got song names " + Arrays.toString(desiredSongAbsFileNames) + " position "
 					+ desiredAbsSongFileNamesPosition);
 
 			TextView et = (TextView) findViewById(R.id.artistName);

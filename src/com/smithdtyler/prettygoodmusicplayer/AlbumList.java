@@ -26,7 +26,6 @@ import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
-import android.widget.BaseAdapter;
 import android.widget.ListView;
 import android.widget.SimpleAdapter;
 import android.widget.TextView;
@@ -45,14 +44,12 @@ public class AlbumList extends AbstractMusicList {
 
 	private static final String TAG = "AlbumList";
 	private List<Map<String,String>> albums;
-	private BaseAdapter listAdapter;
 
 	private String currentTheme;
 	private String currentSize;
 
-
-	private void populateAlbums(String artistName, String artistPath){
-		albums = new ArrayList<Map<String,String>>();
+	private void populateAlbums(String artistPath){
+		albums = new ArrayList<>();
 		
 		File artist = new File(artistPath);
 		Log.d(TAG, "storage directory = " + artist);
@@ -62,7 +59,7 @@ public class AlbumList extends AbstractMusicList {
 			return;
 		}
 		
-		List<File> albumFiles = new ArrayList<File>();
+		List<File> albumFiles = new ArrayList<>();
 		for(File albumFile : artist.listFiles()){
 			if(Utils.isValidAlbumDirectory(albumFile)){
 				albumFiles.add(albumFile);
@@ -85,7 +82,7 @@ public class AlbumList extends AbstractMusicList {
 		for(File albumFile : albumFiles){
 			String album = albumFile.getName();
 			Log.v(TAG, "Adding album " + album);
-			Map<String,String> map = new HashMap<String, String>();
+			Map<String,String> map = new HashMap<>();
 			map.put("album", album);			
 			albums.add(map);
 		}
@@ -112,8 +109,10 @@ public class AlbumList extends AbstractMusicList {
 	    final String artist = intent.getStringExtra(ArtistList.ARTIST_NAME);
 		
 		ActionBar actionBar = getActionBar();
-		actionBar.setDisplayHomeAsUpEnabled(true);
-		actionBar.setTitle(artist);
+		if( actionBar != null) {
+			actionBar.setDisplayHomeAsUpEnabled(true);
+			actionBar.setTitle(artist);
+		}
 		SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
         String theme = sharedPref.getString("pref_theme", getString(R.string.light));
         String size = sharedPref.getString("pref_text_size", getString(R.string.medium));
@@ -121,7 +120,8 @@ public class AlbumList extends AbstractMusicList {
         Log.i(TAG, "got configured size " + size);
         currentTheme = theme;
         currentSize = size;
-        // These settings were fixed in english for a while, so check for old style settings as well as language specific ones.
+        // These settings were fixed in english for a while, so check for old
+        // style settings as well as language specific ones.
         if(theme.equalsIgnoreCase(getString(R.string.dark)) || theme.equalsIgnoreCase("dark")){
         	Log.i(TAG, "setting theme to " + theme);
         	if(size.equalsIgnoreCase(getString(R.string.small)) || size.equalsIgnoreCase("small")){
@@ -147,18 +147,18 @@ public class AlbumList extends AbstractMusicList {
 	    Log.i(TAG, "Getting albums for " + artist);
 	    
 	    final String artistPath = intent.getStringExtra(ArtistList.ARTIST_ABS_PATH_NAME);
-	    populateAlbums(artist, artistPath);
-        
-        listAdapter = new SimpleAdapter(this, albums, R.layout.pgmp_list_item, new String[] {"album"}, new int[] {R.id.PGMPListItemText});
+	    populateAlbums(artistPath);
+
 	    ListView lv = (ListView) findViewById(R.id.albumListView);
-        lv.setAdapter(listAdapter);
+        lv.setAdapter(new SimpleAdapter(this, albums, R.layout.pgmp_list_item,
+				new String[] {"album"}, new int[] {R.id.PGMPListItemText}));
         
         // React to user clicks on item
         lv.setOnItemClickListener(new AdapterView.OnItemClickListener() {
 
              public void onItemClick(AdapterView<?> parentAdapter, View view, int position,
                                      long id) {
-            	 TextView clickedView = (TextView) view.findViewById(R.id.PGMPListItemText);;
+            	 TextView clickedView = (TextView) view.findViewById(R.id.PGMPListItemText);
             	 Intent intent = new Intent(AlbumList.this, SongList.class);
             	 intent.putExtra(ALBUM_NAME, clickedView.getText());
             	 intent.putExtra(ArtistList.ARTIST_NAME, artist);
@@ -166,8 +166,6 @@ public class AlbumList extends AbstractMusicList {
             	 startActivity(intent);
              }
         });
-        
-
 	}
 	
     @Override
@@ -190,5 +188,4 @@ public class AlbumList extends AbstractMusicList {
         	startActivity(getIntent());
         }
 	}
-
 }

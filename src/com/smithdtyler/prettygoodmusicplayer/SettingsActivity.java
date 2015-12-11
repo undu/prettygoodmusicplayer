@@ -145,7 +145,7 @@ public class SettingsActivity extends PreferenceActivity {
 				// lists
 				prefs.edit().putInt("ARTIST_LIST_TOP", Integer.MIN_VALUE)
 						.putInt("ARTIST_LIST_INDEX", Integer.MIN_VALUE)
-						.commit();
+						.apply();
 				return;
 			}
 			if (which == 1) {
@@ -203,8 +203,7 @@ public class SettingsActivity extends PreferenceActivity {
 		}
 		
 	}
-	
-	
+
 	public static class Item{
 	    public final String text;
 	    public final int icon;
@@ -217,5 +216,4 @@ public class SettingsActivity extends PreferenceActivity {
 	        return text;
 	    }
 	}
-	
 }
