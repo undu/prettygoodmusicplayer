@@ -30,23 +30,11 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.media.AudioManager;
 import android.media.AudioManager.OnAudioFocusChangeListener;
-import android.media.MediaPlayer;
-import android.media.MediaPlayer.OnCompletionListener;
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.os.IBinder;
-import android.os.Looper;
-import android.os.Message;
-import android.os.Messenger;
-import android.os.PowerManager;
-import android.os.PowerManager.WakeLock;
-import android.os.RemoteException;
+import android.os.*;
 import android.preference.PreferenceManager;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationCompat.Builder;
 import android.util.Log;
-import android.widget.Toast;
 
 import com.smithdtyler.prettygoodmusicplayer.AlbumList;
 import com.smithdtyler.prettygoodmusicplayer.ArtistList;
@@ -56,21 +44,12 @@ import com.smithdtyler.prettygoodmusicplayer.SongList;
 import com.smithdtyler.prettygoodmusicplayer.Utils;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
 
-import ch.blinkenlights.android.vanilla.ReadaheadThread;
-
-public class MusicPlaybackService extends Service {
-	public enum PlaybackState {
-		PLAYING, PAUSED, UNKNOWN
-	}
+public class MusicPlaybackService extends Service implements Jukebox.PlaybackChangeListener {
 
 	public static final int MSG_REGISTER_CLIENT = 1;
 	public static final int MSG_UNREGISTER_CLIENT = 2;
@@ -85,7 +64,7 @@ public class MusicPlaybackService extends Service {
 	public static final int MSG_CANCEL_PAUSE_IN_ONE_SEC = 9;
 	public static final int MSG_TOGGLE_SHUFFLE = 10;
 	public static final int MSG_SEEK_TO = 11;
-	public static final int MSG_JUMPBACK = 12;
+	public static final int MSG_REWIND = 12;
 	public static final int MSG_PLAY = 13;
 
 	// State management
@@ -105,16 +84,10 @@ public class MusicPlaybackService extends Service {
 			MusicBroadcastReceiver.class.getPackage().getName(),
 			MusicBroadcastReceiver.class.getName());
 
-	private FileInputStream fis;
-	private File songFile;
-	private String[] songAbsoluteFileNames;
-	private int songAbsoluteFileNamesPosition;
-
 	private Timer timer;
 
 	private AudioManager am;
 	private ServiceHandler mServiceHandler;
-	private MediaPlayer mp;
 	private static final String TAG = "MusicPlaybackService";
 	private static boolean isRunning = false;
 
@@ -135,26 +108,21 @@ public class MusicPlaybackService extends Service {
 	 */
 	List<Messenger> mClients = new ArrayList<>();
 
-	final Messenger mMessenger = new Messenger(new IncomingHandler(this));
+	final IncomingHandler mIHandler = new IncomingHandler(this);
+	final Messenger mMessenger = new Messenger(mIHandler);
 
 	private AudioManager mAudioManager;
 
-	// These are used to report song progress when the song isn't started yet.
-	private int lastDuration = 0;
-	private int lastPosition = 0;
 	private long pauseTime = Long.MAX_VALUE;
 	private boolean _shuffle = false;
-	private List<Integer> shuffleFrontList = new ArrayList<>();
-	private Random random;
-	private List<Integer> shuffleBackList = new ArrayList<>();
 	private String artist;
 	private String artistAbsPath;
 	private String album;
 	private long lastResumeUpdateTime;
 	private SharedPreferences sharedPref;
 	private HeadphoneBroadcastReceiver headphoneReceiver;
-	WakeLock wakeLock;
-	private ReadaheadThread mReadaheadThread;
+
+	private Jukebox jukebox;
 
 	// Handler that receives messages from the thread
 	private final class ServiceHandler extends Handler {
@@ -171,40 +139,32 @@ public class MusicPlaybackService extends Service {
 	@Override
 	public synchronized void onCreate() {
 		Log.i(TAG, "Music Playback Service Created!");
+
 		isRunning = true;
 		sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
 
-		wakeLock = ((PowerManager) getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
-				"PGMPWakeLock");
+		jukebox = new Jukebox(getApplicationContext(), (AudioManager) getBaseContext().getSystemService(
+				Context.AUDIO_SERVICE));
+		jukebox.addPlaybackChangeListener(this);
 
-		random = new Random();
-
-		mp = new MediaPlayer();
-		mReadaheadThread = new ReadaheadThread();
-
-		mp.setOnCompletionListener(new OnCompletionListener() {
-
-			@Override
-			public void onCompletion(MediaPlayer mp) {
-				Log.i(TAG, "Song complete");
-				next();
-			}
-
-		});
+		mIHandler.addJukebox(jukebox);
 
 		// https://developer.android.com/training/managing-audio/audio-focus.html
-		audioFocusListener = new AudioFocusListener(this);
+		audioFocusListener = new AudioFocusListener(jukebox);
+		jukebox.addAudioFocusListener((AudioFocusListener) audioFocusListener);
 
 		// Get permission to play audio
 		am = (AudioManager) getBaseContext().getSystemService(
 				Context.AUDIO_SERVICE);
 
-		HandlerThread thread = new HandlerThread("ServiceStartArguments");
+
+		HandlerThread thread = new HandlerThread("PlaybackService", android.os.Process.THREAD_PRIORITY_DEFAULT);
 		thread.start();
 
 		// Get the HandlerThread's Looper and use it for our Handler
 		mServiceHandler = new ServiceHandler(thread.getLooper());
 
+		/* TODO Notification startup & management
 		// https://stackoverflow.com/questions/19474116/the-constructor-notification-is-deprecated
 		// https://stackoverflow.com/questions/6406730/updating-an-ongoing-notification-quietly/15538209#15538209
 		Intent resultIntent = new Intent(this, NowPlaying.class);
@@ -216,6 +176,8 @@ public class MusicPlaybackService extends Service {
 		// Use the FLAG_ACTIVITY_CLEAR_TOP to prevent launching a second
 		// NowPlaying if one already exists.
 		resultIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+
 		PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
 				resultIntent, 0);
 
@@ -237,7 +199,9 @@ public class MusicPlaybackService extends Service {
 						.build();
 
 		startForeground(uid, notification);
+		*/
 
+		// Timer used to send info to clients (via onTimerTick())
 		timer = new Timer();
 		timer.scheduleAtFixedRate(new TimerTask() {
 			public void run() {
@@ -245,7 +209,6 @@ public class MusicPlaybackService extends Service {
 			}
 		}, 0, 500L);
 
-		Log.i(TAG, "Registering event receiver");
 		mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 		// Apparently audio registration is persistent across lots of things...
 		// restarts, installs, etc.
@@ -254,6 +217,7 @@ public class MusicPlaybackService extends Service {
 		// accept it, so I'll do it this way.
 		getApplicationContext().registerReceiver(receiver, filter);
 
+		Log.i(TAG, "Registering event receiver");
 		headphoneReceiver = new HeadphoneBroadcastReceiver();
 		IntentFilter intentFilter = new IntentFilter();
 		intentFilter.addAction("android.intent.action.HEADSET_PLUG");
@@ -275,22 +239,22 @@ public class MusicPlaybackService extends Service {
 			Log.i(TAG, "I got a message! " + command);
 			if (command == MSG_PLAYPAUSE) {
 				Log.i(TAG, "I got a playpause message");
-				playPause();
+				jukebox.playOrPause();
 			} else if (command == MSG_PAUSE) {
 				Log.i(TAG, "I got a pause message");
-				pause();
+				jukebox.pause();
 			} else if (command == MSG_PLAY) {
 				Log.i(TAG, "I got a play message");
-				play();
+				jukebox.play();
 			} else if (command == MSG_NEXT) {
 				Log.i(TAG, "I got a next message");
-				next();
+				jukebox.next();
 			} else if (command == MSG_PREVIOUS) {
 				Log.i(TAG, "I got a previous message");
-				previous();
-			} else if (command == MSG_JUMPBACK) {
-				Log.i(TAG, "I got a jumpback message");
-				jumpback();
+				jukebox.previous();
+			} else if (command == MSG_REWIND) {
+				Log.i(TAG, "I got a rewind message");
+				jukebox.rewind(20);
 			} else if (command == MSG_STOP_SERVICE) {
 				Log.i(TAG, "I got a stop message");
 				headphoneReceiver.ignoreEvents();
@@ -320,11 +284,15 @@ public class MusicPlaybackService extends Service {
 	// Receives messages from activities which want to control the jams
 	private static class IncomingHandler extends Handler {
 		private final MusicPlaybackService _service;
+		private Jukebox jukebox;
 
 		private IncomingHandler(MusicPlaybackService service) {
 			_service = service;
 		}
 
+		void addJukebox(Jukebox jukebox) {
+			this.jukebox = jukebox;
+		}
 		@Override
 		public void handleMessage(Message msg) {
 			Log.i(TAG, "Music Playback service got a message!");
@@ -346,19 +314,19 @@ public class MusicPlaybackService extends Service {
 				// what's happening and wants to switch it.
 				Log.i(TAG, "Got a playpause message!");
 				// Assume that we're not changing songs
-				_service.playPause();
+				jukebox.playOrPause();
 				break;
 			case MSG_NEXT:
 				Log.i(TAG, "Got a next message!");
-				_service.next();
+				jukebox.next();
 				break;
 			case MSG_PREVIOUS:
 				Log.i(TAG, "Got a previous message!");
-				_service.previous();
+				jukebox.previous();
 				break;
-			case MSG_JUMPBACK:
+			case MSG_REWIND:
 				Log.i(TAG, "Got a jump back message!");
-				_service.jumpback();
+				jukebox.rewind(20);
 				break;
 			case MSG_TOGGLE_SHUFFLE:
 				Log.i(TAG, "Got a toggle shuffle message!");
@@ -366,19 +334,15 @@ public class MusicPlaybackService extends Service {
 				break;
 			case MSG_SET_PLAYLIST:
 				Log.i(TAG, "Got a set playlist message!");
-				_service.songAbsoluteFileNames = msg.getData().getStringArray(
-						SongList.SONG_ABS_FILE_NAME_LIST);
-				_service.songAbsoluteFileNamesPosition = msg.getData().getInt(
-						SongList.SONG_ABS_FILE_NAME_LIST_POSITION);
-				_service.songFile = new File(
-						_service.songAbsoluteFileNames[_service.songAbsoluteFileNamesPosition]);
+				jukebox.setPlaylist(msg.getData().getStringArray(
+						SongList.SONG_ABS_FILE_NAME_LIST));
+				jukebox.setPlaylistIndex(msg.getData().getInt(
+						SongList.SONG_ABS_FILE_NAME_LIST_POSITION));
 				_service.artist = msg.getData().getString(ArtistList.ARTIST_NAME);
 				_service.artistAbsPath = msg.getData().getString(ArtistList.ARTIST_ABS_PATH_NAME);
 				_service.album = msg.getData().getString(AlbumList.ALBUM_NAME);
 				int songPosition = msg.getData().getInt(TRACK_POSITION, 0);
-				_service.startPlayingFile(songPosition);
-				_service.updateNotification();
-				_service.resetShuffle();
+				jukebox.play(songPosition);
 				break;
 			case MSG_REQUEST_STATE:
 				Log.i(TAG, "Got a state request message!");
@@ -386,7 +350,7 @@ public class MusicPlaybackService extends Service {
 			case MSG_SEEK_TO:
 				Log.i(TAG, "Got a seek request message!");
 				int progress = msg.getData().getInt(TRACK_POSITION);
-				_service.jumpTo(progress);
+				jukebox.seekTo(progress);
 				break;
 			default:
 				super.handleMessage(msg);
@@ -395,27 +359,28 @@ public class MusicPlaybackService extends Service {
 	}
 
 	private void onTimerTick() {
-		long currentTime = System.currentTimeMillis();
-		if (pauseTime < currentTime) {
-			pause();
+		long now = System.currentTimeMillis();
+		if (pauseTime < now) {
+			jukebox.pause();
 		}
 		updateResumePosition();
 		sendUpdateToClients();
 	}
 
 	private void updateResumePosition(){
-		long currentTime = System.currentTimeMillis();
-		if(currentTime - 10000 > lastResumeUpdateTime){
-			if(mp != null && songFile != null && mp.isPlaying()){
-				int pos = mp.getCurrentPosition();
+		long now = System.currentTimeMillis();
+		if(now - 10000 > lastResumeUpdateTime){
+			if(jukebox != null && jukebox.isPlaying()){
+				int pos = jukebox.getSongPlaybackPosition();
 				SharedPreferences prefs = getSharedPreferences("PrettyGoodMusicPlayer", MODE_PRIVATE);
-				Log.i(TAG,
-						"Preferences update success: "
-								+ prefs.edit()
-								.putString(songFile.getParentFile().getAbsolutePath(),songFile.getName() + "~" + pos)
-								.commit());
+				File songFile = jukebox.getCurrentSongFile();
+				Log.i(TAG, "Preferences update success: "
+						+ prefs.edit().putString(
+						songFile.getParentFile().getAbsolutePath(),
+						songFile.getName() + "~" + pos)
+						  .commit());
 			}
-			lastResumeUpdateTime = currentTime;
+			lastResumeUpdateTime = now;
 		}
 	}
 
@@ -424,7 +389,8 @@ public class MusicPlaybackService extends Service {
 		for (Messenger client : mClients) {
 			Message msg = Message.obtain(null, MSG_SERVICE_STATUS);
 			Bundle b = new Bundle();
-			if (songFile != null) {
+			if (jukebox != null && jukebox.getCurrentSongFile() != null) {
+				File songFile = jukebox.getCurrentSongFile();
 				b.putString(PRETTY_SONG_NAME,
 						Utils.getPrettySongName(songFile));
 				b.putString(PRETTY_ALBUM_NAME, songFile.getParentFile()
@@ -439,21 +405,10 @@ public class MusicPlaybackService extends Service {
 			}
 
 			b.putBoolean(IS_SHUFFLING, this._shuffle);
+			b.putInt(PLAYBACK_STATE, jukebox.getPlayBackState().ordinal());
 
-			if (mp.isPlaying()) {
-				b.putInt(PLAYBACK_STATE, PlaybackState.PLAYING.ordinal());
-			} else {
-				b.putInt(PLAYBACK_STATE, PlaybackState.PAUSED.ordinal());
-			}
-			// We might not be able to send the position right away if mp is
-			// still being created
-			// so instead let's send the last position we knew about.
-			if (mp.isPlaying()) {
-				lastDuration = mp.getDuration();
-				lastPosition = mp.getCurrentPosition();
-			}
-			b.putInt(TRACK_DURATION, lastDuration);
-			b.putInt(TRACK_POSITION, lastPosition);
+			b.putInt(TRACK_DURATION, jukebox.getSongDuration());
+			b.putInt(TRACK_POSITION, jukebox.getSongPlaybackPosition());
 			msg.setData(b);
 			try {
 				client.send(msg);
@@ -479,257 +434,27 @@ public class MusicPlaybackService extends Service {
 		am.abandonAudioFocus(audioFocusListener);
 		mAudioManager.unregisterMediaButtonEventReceiver(cn);
 		getApplicationContext().unregisterReceiver(receiver);
-		mp.stop();
-		mp.reset();
-		mp.release();
-		if (wakeLock.isHeld()) {
-			wakeLock.release();
-		}
+		jukebox.onDestroy();
 		Log.i("MyService", "Service Stopped.");
 		isRunning = false;
-	}
-
-	private synchronized void jumpback(){
-		if (mp.isPlaying()) {
-			int progressMillis = mp.getCurrentPosition();
-			if (progressMillis <= 20000) {
-				mp.seekTo(0);
-			} else {
-				mp.seekTo(progressMillis - 20000);
-			}
-			lastPosition = mp.getCurrentPosition();
-		} else {
-			// if we're paused but initialized, try to seek
-			try{
-				int progressMillis = mp.getCurrentPosition();
-				if (progressMillis <= 20000) {
-					mp.seekTo(0);
-				} else {
-					mp.seekTo(progressMillis - 20000);
-				}
-				lastPosition = mp.getCurrentPosition();
-			} catch (Exception e){
-				Log.w(TAG, "Unable to seek to position, file may not have been loaded");
-			}
-		}
-	}
-
-	private synchronized void previous() {
-		// if we're playing, and we're more than 3 seconds into the file, then
-		// just
-		// start the song over
-		if (mp.isPlaying()) {
-			int progressMillis = mp.getCurrentPosition();
-			if (progressMillis > 3000) {
-				mp.seekTo(0);
-				return;
-			}
-		}
-
-		mp.stop();
-		mp.reset();
-		try {
-			fis.close();
-		} catch (IOException e) {
-			Log.w(TAG, "Failed to close the file");
-			e.printStackTrace();
-		}
-		songAbsoluteFileNamesPosition = songAbsoluteFileNamesPosition - 1;
-		if (songAbsoluteFileNamesPosition < 0) {
-			songAbsoluteFileNamesPosition = songAbsoluteFileNames.length - 1;
-		}
-		String next = songAbsoluteFileNames[songAbsoluteFileNamesPosition];
-		try {
-			songFile = new File(next);
-			fis = new FileInputStream(songFile);
-			mp.setDataSource(fis.getFD());
-			mReadaheadThread.setSource(songFile.getAbsolutePath());
-			mp.prepare();
-			mp.start();
-		} catch (IOException e) {
-			Log.w(TAG, "Failed to open " + next);
-			e.printStackTrace();
-			String errorText = "Couldn't play file " + songFile.getAbsolutePath();
-			Toast.makeText(getApplicationContext(), errorText, Toast.LENGTH_SHORT).show();
-			// Just go to the next song back
-			previous();
-		}
-		updateNotification();
-	}
-
-	private synchronized void startPlayingFile(int songProgress) {
-		// Have we loaded a file yet?
-		if (mp.getDuration() > 0) {
-			pause();
-			mp.stop();
-			mp.reset();
-		}
-
-		// open the file, pass it into the mp
-		try {
-			fis = new FileInputStream(songFile);
-			mp.setDataSource(fis.getFD());
-			mReadaheadThread.setSource(songFile.getAbsolutePath());
-			mp.prepare();
-			if(songProgress > 0){
-				mp.seekTo(songProgress);
-			}
-			wakeLock.acquire();
-		} catch (FileNotFoundException | IllegalArgumentException | IllegalStateException e) {
-			e.printStackTrace();
-		} catch (IOException e) {
-			// display popup
-			String errorText = "Couldn't play file " + songFile.getAbsolutePath();
-			Toast.makeText(getApplicationContext(), errorText, Toast.LENGTH_SHORT).show();
-		}
-	}
-
-	private synchronized void jumpTo(int position){
-		if(mp.isPlaying()){
-			mp.seekTo(position);
-		} else {
-			// if we're paused but initialized, try to seek
-			try{
-				mp.seekTo(position);
-				lastPosition = mp.getCurrentPosition();
-			} catch (Exception e){
-				Log.w(TAG, "Unable to seek to position, file may not have been loaded");
-			}
-		}
-	}
-
-	private synchronized void playPause() {
-		if (mp.isPlaying()) {
-			pause();
-		} else {
-			play();
-		}
-	}
-
-	synchronized void play() {
-		pauseTime = Long.MAX_VALUE;
-		if (!mp.isPlaying()) {
-			// Request audio focus for playback
-			int result = am.requestAudioFocus(
-					audioFocusListener,
-					// Use the music stream.
-					AudioManager.STREAM_MUSIC,
-					// Request permanent focus.
-					AudioManager.AUDIOFOCUS_GAIN);
-			Log.d(TAG, "requestAudioFocus result = " + result);
-			Log.i(TAG, "About to play " + songFile);
-
-			if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-				Log.d(TAG, "We got audio focus!");
-				mp.start();
-				updateNotification();
-				wakeLock.acquire();
-			} else {
-				Log.e(TAG, "Unable to get audio focus");
-			}
-		}
-	}
-
-	/**
-	 * Pause the currently playing song.
-	 */
-	synchronized void pause() {
-		// Sometimes the call to isPlaying can throw an error "internal/external state mismatch corrected"
-		// When this happens, I think the player moves itself to "paused" even though it's still playing.
-		try{
-			// this is a hack, but it seems to be the most consistent way to address the problem
-			// this forces the media player to check its current state before trying to pause.
-			int position = mp.getCurrentPosition();
-			mp.stop();
-			mp.prepare();
-			mp.seekTo(position);
-			wakeLock.release();
-		} catch (Exception e){
-			Log.w(TAG, "Caught exception while trying to pause ", e);
-			String errorText = "Couldn't play file " + songFile.getAbsolutePath();
-			Toast.makeText(getApplicationContext(), errorText, Toast.LENGTH_SHORT).show();
-		}
-		updateNotification();
-	}
-
-	/**
-	 *
-	 */
-	private synchronized void resetShuffle(){
-		shuffleFrontList.clear();
-		shuffleBackList.clear();
-		for(int i = 0; i < songAbsoluteFileNames.length; i++){
-			shuffleFrontList.add(i);
-		}
-	}
-
-	// Props to this fellow: https://stackoverflow.com/questions/5467174/how-to-implement-a-repeating-shuffle-thats-random-but-not-too-random
-	private synchronized int grabNextShuffledPosition(){
-		int threshold = (int) Math.ceil((songAbsoluteFileNames.length + 1) / 2);
-		Log.d(TAG, "threshold: " + threshold);
-		if(shuffleFrontList.size() < threshold){
-			Log.d(TAG, "Shuffle queue is half empty, adding a new song...");
-			shuffleFrontList.add(shuffleBackList.get(0));
-			shuffleBackList.remove(0);
-		}
-		int rand = Math.abs(random.nextInt()) % shuffleFrontList.size();
-		int loc = shuffleFrontList.get(rand);
-		shuffleFrontList.remove(rand);
-		shuffleBackList.add(loc);
-		Log.i(TAG, "next position is: " + loc);
-		String front = "";
-		String back = "";
-		for(int i : shuffleFrontList){
-			front = front + "," + i;
-		}
-		for(int i : shuffleBackList){
-			back = back + "," + i;
-		}
-		Log.i(TAG, "Front list = " + front);
-		Log.i(TAG, "Back list = " + back);
-		return loc;
-	}
-
-	private synchronized void next() {
-		mp.stop();
-		mp.reset();
-		try {
-			fis.close();
-		} catch (Exception e) {
-			Log.w(TAG, "Failed to close the file");
-			e.printStackTrace();
-		}
-
-		if(!this._shuffle){
-			songAbsoluteFileNamesPosition = (songAbsoluteFileNamesPosition + 1)
-					% songAbsoluteFileNames.length;
-		} else {
-			songAbsoluteFileNamesPosition = grabNextShuffledPosition();
-		}
-		String next = songAbsoluteFileNames[songAbsoluteFileNamesPosition];
-		try {
-			songFile = new File(next);
-			fis = new FileInputStream(songFile);
-			mp.setDataSource(fis.getFD());
-			mReadaheadThread.setSource(songFile.getAbsolutePath());
-			mp.prepare();
-			mp.start();
-		} catch (IOException e) {
-			Log.w(TAG, "Failed to open " + next);
-			e.printStackTrace();
-			String errorText = "Couldn't play file " + songFile.getAbsolutePath();
-			Toast.makeText(getApplicationContext(), errorText, Toast.LENGTH_SHORT).show();
-			// I think our best chance is to go to the next song
-			next();
-		}
-		updateNotification();
 	}
 
 	public void toggleShuffle() {
 		this._shuffle = !this._shuffle ;
 	}
 
-	private void updateNotification() {
+	@Override
+	public void onPlaybackStateChange() {
+		NotificationManager mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+		if (jukebox.getPlayBackState() != Jukebox.PlaybackState.STOPPED && jukebox.getCurrentSongFile() != null) {
+			mNotificationManager.notify(uid, createNotification(jukebox.getCurrentSongFile(), jukebox.getPlayBackState()));
+		}
+		else {
+			mNotificationManager.cancel(uid);
+		}
+	}
+
+	private Notification createNotification(File song, Jukebox.PlaybackState state) {
 		boolean audiobookMode = sharedPref.getBoolean("pref_audiobook_mode", false);
 
 		// https://stackoverflow.com/questions/5528288/how-do-i-update-the-notification-text-for-a-foreground-service-in-android
@@ -749,7 +474,8 @@ public class MusicPlaybackService extends Service {
 				this.getApplicationContext());
 		int icon = R.drawable.ic_pgmp_launcher;
 		String contentText = getResources().getString(R.string.ticker_text);
-		if (songFile != null) {
+		if (jukebox != null && jukebox.getCurrentSongFile() != null) {
+			File songFile = jukebox.getCurrentSongFile();
 			SharedPreferences prefs = getSharedPreferences(
 					"PrettyGoodMusicPlayer", MODE_PRIVATE);
 			prefs.edit().apply();
@@ -758,8 +484,8 @@ public class MusicPlaybackService extends Service {
 					bestGuessMusicDir.getAbsolutePath());
 			contentText = Utils.getArtistName(songFile, musicRoot) + ": "
 					+ Utils.getPrettySongName(songFile);
-			if (mp != null) {
-				if (mp.isPlaying()) {
+			if (isRunning()) {
+				if (jukebox.isPlaying()) {
 					icon = R.drawable.ic_pgmp_launcher;
 				}
 			}
@@ -770,7 +496,7 @@ public class MusicPlaybackService extends Service {
 		PendingIntent previousPendingIntent = PendingIntent.getService(this, 0, previousIntent, PendingIntent.FLAG_UPDATE_CURRENT);
 
 		Intent jumpBackIntent = new Intent("JumpBack", null, this, MusicPlaybackService.class);
-		jumpBackIntent.putExtra("Message", MSG_JUMPBACK);
+		jumpBackIntent.putExtra("Message", MSG_REWIND);
 		PendingIntent jumpBackPendingIntent = PendingIntent.getService(this, 0, jumpBackIntent, PendingIntent.FLAG_UPDATE_CURRENT);
 
 		Intent nextIntent = new Intent("Next", null, this, MusicPlaybackService.class);
@@ -782,7 +508,7 @@ public class MusicPlaybackService extends Service {
 		playPauseIntent.putExtra("Message", MSG_PLAYPAUSE);
 		playPausePendingIntent = PendingIntent.getService(this, 0, playPauseIntent, PendingIntent.FLAG_UPDATE_CURRENT);
 		int playPauseIcon;
-		if(mp != null && mp.isPlaying()){
+		if(isRunning() && jukebox.isPlaying()){
 			playPauseIcon = R.drawable.ic_action_pause;
 		} else {
 			playPauseIcon = R.drawable.ic_action_play;
@@ -815,11 +541,6 @@ public class MusicPlaybackService extends Service {
 							.build();
 		}
 
-		NotificationManager mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-		mNotificationManager.notify(uid, notification);
-	}
-
-	public boolean isPlaying() {
-		return mp.isPlaying();
+		return notification;
 	}
 }

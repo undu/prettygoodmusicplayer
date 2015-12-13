@@ -54,7 +54,7 @@ import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
 
 import com.smithdtyler.prettygoodmusicplayer.playback.MusicPlaybackService;
-import com.smithdtyler.prettygoodmusicplayer.playback.MusicPlaybackService.PlaybackState;
+import com.smithdtyler.prettygoodmusicplayer.playback.Jukebox.PlaybackState;
 
 public class NowPlaying extends Activity {
 
@@ -347,7 +347,7 @@ public class NowPlaying extends Activity {
 
 	public void jumpBack(){
 		Log.d(TAG, "JumpBack clicked...");
-		Message msg = Message.obtain(null, MusicPlaybackService.MSG_JUMPBACK);
+		Message msg = Message.obtain(null, MusicPlaybackService.MSG_REWIND);
 		try {
 			Log.i(TAG, "Sending a request to jump back!");
 			mService.send(msg);
@@ -425,7 +425,7 @@ public class NowPlaying extends Activity {
 			// unexpectedly disconnected - process crashed.
 			mService = null; // TODO need to do some null checks
 		}
-	};
+	}
 
 	private static class IncomingHandler extends Handler {
 
