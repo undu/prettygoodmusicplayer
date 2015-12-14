@@ -43,7 +43,6 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 	private List<Integer> shuffleHead;
 	private List<Integer> shuffleTail;
 
-	private FileInputStream currentSongStream;
 	private int currentSong;
 	private STATE state = STATE.IDLE;
 
@@ -181,7 +180,6 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 		if (state != STATE.PLAYING) {
 			if(state == STATE.IDLE) {
 				loadFile(getCurrentSongFile());
-				mp.prepareAsync();
 			} else {
 				onPrepared(mp);
 			}
@@ -246,7 +244,6 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 			currentSong = (((currentSong - 1) % (playlist.size() - 1)) + (playlist.size() - 1)) % (playlist.size() - 1);
 		}
 		loadFile(playlist.get(currentSong));
-		onPlaybackChanged();
 	}
 
 	synchronized void next() {
@@ -256,7 +253,6 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 			currentSong = grabNextShuffledPosition();
         }
 		loadFile(playlist.get(currentSong));
-		onPlaybackChanged();
     }
 
 	/**
@@ -282,12 +278,10 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 		stop();
 		reset();
 		try {
-			currentSongStream.close();
-		} catch (IOException ignore) {
-		}
-		try {
-			currentSongStream = new FileInputStream(song);
+			FileInputStream currentSongStream = new FileInputStream(song);
 			mp.setDataSource(currentSongStream.getFD());
+
+			currentSongStream.close();
 			mReadaheadThread.setSource(song.getAbsolutePath());
 			mp.prepareAsync();
 		} catch (FileNotFoundException | IllegalArgumentException | IllegalStateException e) {
