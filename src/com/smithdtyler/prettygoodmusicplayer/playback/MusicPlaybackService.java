@@ -335,8 +335,7 @@ public class MusicPlaybackService extends Service implements Jukebox.PlaybackCha
 			case MSG_SET_PLAYLIST:
 				Log.i(TAG, "Got a set playlist message!");
 				jukebox.setPlaylist(msg.getData().getStringArray(
-						SongList.SONG_ABS_FILE_NAME_LIST));
-				jukebox.setPlaylistIndex(msg.getData().getInt(
+						SongList.SONG_ABS_FILE_NAME_LIST), msg.getData().getInt(
 						SongList.SONG_ABS_FILE_NAME_LIST_POSITION));
 				_service.artist = msg.getData().getString(ArtistList.ARTIST_NAME);
 				_service.artistAbsPath = msg.getData().getString(ArtistList.ARTIST_ABS_PATH_NAME);

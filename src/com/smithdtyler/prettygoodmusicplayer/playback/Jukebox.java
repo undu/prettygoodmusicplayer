@@ -159,16 +159,15 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 		}
 	}
 
-	public synchronized void setPlaylist(String[] songNames) {
+	public synchronized void setPlaylist(String[] songNames, int index) {
 		playlist = new ArrayList<>();
 		for(String name: songNames) {
 			playlist.add(new File(name));
 		}
-		resetShuffle();
-	}
-
-	public void setPlaylistIndex(int index) {
 		currentSong = index;
+		resetShuffle();
+		stop(false);
+		reset();
 	}
 
 	synchronized void play() {
@@ -187,11 +186,17 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 	}
 
 	synchronized void stop() {
+		stop(true);
+	}
+
+	synchronized void stop(boolean notify) {
 		if (Arrays.asList(STATE.PREPARED, STATE.PLAYING,
 				STATE.PAUSED, STATE.FINISHED).contains(state)) {
 			mp.stop();
 			state = STATE.STOPPED;
-			onPlaybackChanged();
+			if (notify) {
+				onPlaybackChanged();
+			}
 		}
 	}
 
@@ -275,7 +280,7 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 
 	private synchronized void loadFile(File song) {
 		// open the file, pass it into the mp
-		stop();
+		stop(false);
 		reset();
 		try {
 			FileInputStream currentSongStream = new FileInputStream(song);
