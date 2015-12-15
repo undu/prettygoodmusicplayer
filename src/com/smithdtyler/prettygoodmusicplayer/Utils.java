@@ -20,9 +20,9 @@ package com.smithdtyler.prettygoodmusicplayer;
 
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
+import android.media.MediaMetadataRetriever;
 import android.os.Environment;
 import android.util.Log;
-import android.webkit.MimeTypeMap;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -196,7 +196,8 @@ public class Utils {
 	 * @return
 	 */
 	public static String getPrettySongName(File songFile) {
-		return getPrettySongName(songFile.getName());
+		String metadata = extractMetadata(songFile, MediaMetadataRetriever.METADATA_KEY_TITLE);
+		return metadata != null ? metadata : getPrettySongName(songFile.getName());
 	}
 
 	/**
@@ -219,6 +220,16 @@ public class Utils {
 	 * @return
 	 */
 	public static String getArtistName(File songFile, String musicRoot) {
+		String metadata = extractMetadata(songFile, MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST);
+		if(metadata != null) {
+			return metadata;
+		}
+
+		metadata = extractMetadata(songFile, MediaMetadataRetriever.METADATA_KEY_ARTIST);
+		if(metadata != null) {
+			return metadata;
+		}
+
 		File albumDir = songFile.getParentFile().getParentFile();
 		if (albumDir.getAbsolutePath().equals(musicRoot)) {
 			return songFile.getParentFile().getName();
@@ -230,7 +241,6 @@ public class Utils {
 	 * Comparator for ordering song files.
 	 */
 	private static class SongFileComparator implements Comparator<File> {
-
 		@Override
 		public int compare(File arg0, File arg1) {
 			String name0 = arg0.getName().toUpperCase(Locale.getDefault());
@@ -241,7 +251,6 @@ public class Utils {
 	}
 
 	private static class AlbumFileComparator implements Comparator<File> {
-
 		@Override
 		public int compare(File arg0, File arg1) {
 			String name0 = arg0.getName().toUpperCase(Locale.getDefault());
@@ -310,5 +319,17 @@ public class Utils {
 			}
 		}
 		return list;
+	}
+
+	/**
+	 *
+	 * @param songFile the file ot retrieve information from
+	 * @param keyCode the MediaMetadataRetriever keycode
+	 * @return the metadata string or null if it's not found;
+	 */
+	private static String extractMetadata(File songFile, int keyCode) {
+		MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+		retriever.setDataSource(songFile.getAbsolutePath());
+		return retriever.extractMetadata(keyCode);
 	}
 }
