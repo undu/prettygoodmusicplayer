@@ -242,16 +242,25 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 			seekTo(0);
 			return;
 		}
-
-		if (playlist.size() > 1) {
-			// java doesn't like when |-a| < b when doing a % b so we have to do
-			// this in order to get a positive value
-			currentSong = (((currentSong - 1) % (playlist.size() - 1)) + (playlist.size() - 1)) % (playlist.size() - 1);
+ 		int pSize = playlist.size();
+		if (pSize > 1) {
+			// If |-a| < b when doing a % b we have to do this in order to get
+			// a positive value
+			currentSong = (((currentSong - 1) % pSize) + pSize) % pSize;
 		}
 		loadFile(playlist.get(currentSong));
 	}
 
-	synchronized void next() {
+	synchronized  void next() {
+		next(false);
+	}
+
+	synchronized void next(boolean auto) {
+		if(!auto && !playlistIsLooped && !playlistIsShuffled && currentSong == playlist.size() - 1){
+			currentSong = 0;
+			stop();
+			return;
+		}
         if(!playlistIsShuffled){
 			currentSong = (currentSong + 1) % playlist.size();
         } else {
