@@ -26,7 +26,7 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 	}
 
 	private enum STATE {
-		IDLE, PREPARED, PLAYING, PAUSED, FINISHED, STOPPED
+		IDLE, PLAYING, PAUSED, FINISHED, STOPPED
 	}
 
 	public enum PlaybackState {
@@ -48,6 +48,7 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 
 	private int nextPlayCursor = 0;
 	private boolean playlistIsShuffled;
+	private boolean playlistIsLooped;
 	private Random random;
 	private AudioFocusListener audioFocusListener;
 
@@ -65,7 +66,7 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 			public void onCompletion(MediaPlayer mp) {
 				Log.i(TAG, "Song complete");
 				state = STATE.FINISHED;
-				next();
+				next(true);
 			}
 
 		});
@@ -76,6 +77,7 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 
 		random = new Random();
 		playlistIsShuffled = false;
+		playlistIsLooped = true;
 		listeners = new ArrayList<>();
 	}
 
@@ -190,8 +192,8 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 	}
 
 	synchronized void stop(boolean notify) {
-		if (Arrays.asList(STATE.PREPARED, STATE.PLAYING,
-				STATE.PAUSED, STATE.FINISHED).contains(state)) {
+		if (Arrays.asList(STATE.PLAYING, STATE.PAUSED, STATE.FINISHED)
+				.contains(state)) {
 			mp.stop();
 			state = STATE.STOPPED;
 			if (notify) {
@@ -242,6 +244,12 @@ public class Jukebox implements MediaPlayer.OnPreparedListener {
 			seekTo(0);
 			return;
 		}
+
+		if(!playlistIsLooped && currentSong == 0) {
+			seekTo(0);
+			return;
+		}
+
  		int pSize = playlist.size();
 		if (pSize > 1) {
 			// If |-a| < b when doing a % b we have to do this in order to get
