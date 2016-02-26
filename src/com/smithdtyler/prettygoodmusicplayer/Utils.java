@@ -22,7 +22,6 @@ import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
 import android.os.Environment;
 import android.util.Log;
-import android.webkit.MimeTypeMap;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -106,6 +105,8 @@ public class Utils {
 				extensions.addAll(MediaTypeUtils.getExtensionsFromMimeType(mediaType));
 			}
 		}
+
+		extensions.addAll(Arrays.asList(legalFormatExtensions));
 
 		return extensions.toArray(new String[extensions.size()]);
 	}
