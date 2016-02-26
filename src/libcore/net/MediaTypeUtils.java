@@ -51,6 +51,7 @@ public final class MediaTypeUtils {
 
 		// no mkv/mka support for flac according to the docs :(
 		add("audio/flac", "flac");
+		add("audio/x-flac", "flac");
 
 		add("audio/gsm", "gsm");
 
@@ -66,6 +67,7 @@ public final class MediaTypeUtils {
 		// audio/mpeg seems to be used exclusively by OMX.google.mp3.decoder
 		add("audio/mpeg", "mp3");
 		add("audio/mpeg3", "mp3");
+		add("audio/x-mp3", "mp3");
 
 		add("audio/mpeg-L2", "mp2");
 
@@ -74,6 +76,11 @@ public final class MediaTypeUtils {
 		add("audio/mp4a-latm", "mp4");
 		add("audio/mp4a-latm", "m4p");
 		add("audio/mp4a-latm", "m2t");
+
+		add("audio/ogg", "oga");
+		add("audio/ogg", "ogg");
+		add("audio/ogg", "opus");
+		add("audio/ogg", "spx");
 
 		add("audio/opus", "opus");
 		add("audio/opus", "ogg");
